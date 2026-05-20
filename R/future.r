@@ -36,7 +36,7 @@
 #' @param HCR_Bban_year Bbanを年によって変える場合。tibble(year=2020:2024, Bban=c(1.3,1.2,1.1,1,0.9))　のようにtibble形式で与える。HCR_Bbanで設定されたBbanは上書きされる。
 #' @param HCR_TAC_reserve_rate TACの取り残し率。マイナス値を入れれば前借りもできる。
 #' @param HCR_TAC_reserve_amount TACの獲り残し量。マイナス値を入れれば前借りもできる。rateとamountの片方どちらかだけ設定する
-#' @param HCR_reserve_denom 比率で取り残し量を決める場合、もともとのABCをもとにするか（"original_ABC"、ブリ・マダラ繰越前借り設定）前年からの繰越も考慮したABCをもとにするか（"original_ABC_plus", スケトウ繰越設定）
+#' @param HCR_reserve_denom 比率で取り残し量を決める場合、もともとのABCをもとにするか（"original_ABC"、最新の繰越前借り設定）前年からの繰越も考慮したABCをもとにするか（"original_ABC_plus", 過去のスケトウ繰越設定）
 #' @param HCR_TAC_carry_rate 当初TACのうち何トンまで持ち越せるかの上限（比率）。
 #' @param HCR_TAC_carry_amount 当初TACのうち何トンまで持ち越せるかの上限（比率）。
 #' @param HCR_TAC_adjust B&B設定の場合，-1 下方向にadjust, 0 上下方向にadjust, 1 上方向のみadjust, 用いない場合はNA
@@ -660,7 +660,13 @@ future_vpa <- function(tmb_data,
           res_future$HCR_realized[i,j,"Fratio"] <- res_future$HCR_realized[i,j-1,"Fratio"]
         }
         else{
-          tmp <- 1:tmb_data$plus_age # res_future$naa[,i,j]>0
+          # どの範囲まで実際に考慮する年齢か？ <- VPA期間に途中でプラスグループが変わる資源への対応
+          if(j < tmb_data$future_initial_year){
+            tmp <- res_future$waa[,i,j]>0 # VPA期間はwaaにデータが入っているところを考慮すべき年齢とする
+          }
+          else{
+            tmp <- 1:tmb_data$plus_age # 将来予測期間はplus_ageで指定された行を考慮すべき年齢とする
+          }
           res_future$HCR_realized[i,j,"Fratio"] <-
             calc_Fratio(faa=res_future$faa[tmp,i,j],
                         waa=res_future$waa[tmp,i,j],
@@ -901,9 +907,9 @@ future_vpa_R <- function(naa_mat,
         MSE_dummy_data$HCR_mat[,,"TAC_carry_rate"] <- NA
         MSE_dummy_data$HCR_mat[,,"TAC_reserve_amount"] <- NA #
         MSE_dummy_data$HCR_mat[,,"TAC_carry_amount"] <- NA   #
-        # 同様にTACの変動の上限設定もオフにする
-        MSE_dummy_data$HCR_mat[,,"TAC_upper_CV"] <- NA
-        MSE_dummy_data$HCR_mat[,,"TAC_lower_CV"] <- NA
+        # 同様にTACの変動の上限設定もオフにする +> オフにしない (2025/05/08変更)
+        #MSE_dummy_data$HCR_mat[,,"TAC_upper_CV"] <- NA
+        #MSE_dummy_data$HCR_mat[,,"TAC_lower_CV"] <- NA
 
         # TACどおりに漁獲すると将来予測でも仮定して将来予測する!!
         if(MSE_catch_exact_TAC==TRUE) MSE_dummy_data$HCR_mat[t-1,,"expect_wcatch"] <- HCR_mat[t-1,i,"expect_wcatch"]
@@ -950,17 +956,32 @@ future_vpa_R <- function(naa_mat,
         SR_MSE[t,i,"ssb"]     <- mean(res_tmp$SR_mat[t,,"ssb"])
         # MSEでなく本来のFで漁獲していたらどうなっていたか
         SR_MSE[t,i,"real_true_catch"] <- catch_equation(N_mat[,t,i],F_mat[,t,i], waa_catch_mat[,t,i], M_mat[,t,i], Pope=Pope) %>% sum()
-        #if(Pope==1){
-        #  SR_MSE[t,i,"real_true_catch"] <- sum(N_mat[,t,i]*(1-exp(-F_mat[,t,i]))*exp(-M_mat[,t,i]/2) * waa_catch_mat[,t,i])
-        #}
-        #else{
-        #  SR_MSE[t,i,"real_true_catch"] <- sum(N_mat[,t,i]*(1-exp(-F_mat[,t,i]-M_mat[,t,i]))*F_mat[,t,i]/(F_mat[,t,i]+M_mat[,t,i]) * waa_catch_mat[,t,i])
-        #}
-
         MSE_seed <- MSE_seed+1
       }
+   }
+
+    # 漁獲量の変動の上限設定 (MSEありの場合にここをやると設定がかぶるので、do_MSE=FALSEのときのみ)
+    if(do_MSE==FALSE && t>=start_ABC_year && has_non_na(HCR_mat[t,,"TAC_upper_CV"])){
+      # expect_wcatchが全部空だったらexpect catchを計算して入れる
+      if(all(HCR_mat[t,,"expect_wcatch"]==0)){
+        HCR_mat[t,,"expect_wcatch"] <- catch_equation(N_mat[,t,],F_mat[,t,],waa_catch_mat[,t,],M_mat[,t,],Pope=Pope) %>% colSums()
+      }
+      # CVよりも小さい・大きかったら上限値にexpect_wcatchを置き換える
+      HCR_mat[t,, "expect_wcatch"] <-
+        set_upper_limit_catch(HCR_realized[t-1,,"wcatch"], HCR_mat[t,,"expect_wcatch"], HCR_mat[t,,"TAC_upper_CV"])
     }
 
+    # 漁獲量の変動の下限設定 (MSEありの場合にここをやると設定がかぶるので、do_MSE=FALSEのときのみ)
+    if(do_MSE==FALSE && t>=start_ABC_year && has_non_na(HCR_mat[t,,"TAC_lower_CV"])){
+      # expect_wcatchが全部空だったらexpect catchを計算して入れる
+      if(all(HCR_mat[t,,"expect_wcatch"]==0)){
+        HCR_mat[t,,"expect_wcatch"] <- catch_equation(N_mat[,t,],F_mat[,t,],waa_catch_mat[,t,],M_mat[,t,],Pope=Pope) %>% colSums()
+      }
+      HCR_mat[t,, "expect_wcatch"] <-
+        set_lower_limit_catch(HCR_realized[t-1,,"wcatch"], HCR_mat[t,,"expect_wcatch"], HCR_mat[t,,"TAC_lower_CV"])
+    }
+      
+    # --- CV設定がある全体の上で繰越・繰入をする
     # TAC carry over setting
     if(has_non_na(HCR_mat[t,,"TAC_reserve_rate"]) || has_non_na(HCR_mat[t,,"TAC_reserve_amount"])){
       if(sum(HCR_mat[t,,"expect_wcatch"])==0){
@@ -1044,30 +1065,10 @@ future_vpa_R <- function(naa_mat,
         }
         #ABC_reserve_amount[ABC_reserve_amount<0] <- 0
         HCR_realized[t+1,,"reserved_catch"] <- cbind(max_carry_amount, ABC_reserve_amount) %>%
-            apply(1,min)
+          apply(1,min)
       }
     }
 
-    # 漁獲量の変動の上限設定
-    if(t>=start_ABC_year && has_non_na(HCR_mat[t,,"TAC_upper_CV"])){
-      # expect_wcatchが全部空だったらexpect catchを計算して入れる
-      if(all(HCR_mat[t,,"expect_wcatch"]==0)){
-        HCR_mat[t,,"expect_wcatch"] <- catch_equation(N_mat[,t,],F_mat[,t,],waa_catch_mat[,t,],M_mat[,t,],Pope=Pope) %>% colSums()
-      }
-      # CVよりも小さい・大きかったら上限値にexpect_wcatchを置き換える
-      HCR_mat[t,, "expect_wcatch"] <-
-        set_upper_limit_catch(HCR_realized[t-1,,"wcatch"], HCR_mat[t,,"expect_wcatch"], HCR_mat[t,,"TAC_upper_CV"])
-    }
-
-    # 漁獲量の変動の下限設定
-    if(t>=start_ABC_year && has_non_na(HCR_mat[t,,"TAC_lower_CV"])){
-      # expect_wcatchが全部空だったらexpect catchを計算して入れる
-      if(all(HCR_mat[t,,"expect_wcatch"]==0)){
-        HCR_mat[t,,"expect_wcatch"] <- catch_equation(N_mat[,t,],F_mat[,t,],waa_catch_mat[,t,],M_mat[,t,],Pope=Pope) %>% colSums()
-      }
-      HCR_mat[t,, "expect_wcatch"] <-
-        set_lower_limit_catch(HCR_realized[t-1,,"wcatch"], HCR_mat[t,,"expect_wcatch"], HCR_mat[t,,"TAC_lower_CV"])
-    }
 
     # do_MSEの場合，真のABCを見てTACの再調整をする場合
     # 場所がここで良いかはあとで考える．まずは単純なdo_MSEの場合
@@ -1443,16 +1444,17 @@ set_SR_mat <- function(res_vpa=NULL,
     }
   }
 
-  if(!is.na(more_process_error[1])){
-    for(k in 1:length(more_process_error)){
-      # 1歳以上のプロセス誤差はランダム加入がおこる１年前の前進計算からかかるようにする
-      # 加入尾数を計算する前に１歳以上の尾数は前進計算により計算されていないといけないためこのような設定になる
-      random_rec_year_period2 <- c(min(random_rec_year_period)-1,random_rec_year_period)
-      tmp_SR <- t(SR_mat[random_rec_year_period2,,str_c("rand",k)])
-      tmp_SR[] <- rnorm(nsim*length(random_rec_year_period2),
+    if(!is.na(more_process_error[1])){
+      col_rand <- which(!is.na(str_match(dimnames(SR_mat)$par,"rand")))[-1]
+      for(k in 1:length(more_process_error)){
+        # 1歳以上のプロセス誤差はランダム加入がおこる１年前の前進計算からかかるようにする
+        # 加入尾数を計算する前に１歳以上の尾数は前進計算により計算されていないといけないためこのような設定になる
+        random_rec_year_period2 <- c(min(random_rec_year_period)-1,random_rec_year_period)
+        tmp_SR <- t(SR_mat[random_rec_year_period2,,col_rand[k]])
+        tmp_SR[] <- rnorm(nsim*length(random_rec_year_period2),
                         mean=0,
                         sd=more_process_error[k])
-      SR_mat[random_rec_year_period2,,str_c("rand",k)] <- t(tmp_SR)
+        SR_mat[random_rec_year_period2,,col_rand[k]] <- t(tmp_SR)
     }
   }
 
@@ -1499,7 +1501,7 @@ SRF_MR <- function(x,a,b,gamma) 0.5*a*(x+sqrt(b^2+gamma^2/4)-sqrt((x-b)^2+gamma^
 #' @param d3_mat 将来予測用の３次元行列
 #' @param pars 置き換えるべき生物パラメータ
 #' @param pars.year この期間の生物パラメータを平均して、将来のパラメータとする
-#' @param year_replace_future 生物パラメータを置き換える最初の年
+#' @param year_replace_future 生物パラメータを置き換える"最初の"年
 #' @param specific_value 特定の年をそこで指定されている値に置き換える
 #' @param rand pars.yearの期間のパラメータをランダムサンプリングする
 #' @encoding UTF-8
@@ -1507,6 +1509,7 @@ SRF_MR <- function(x,a,b,gamma) 0.5*a*(x+sqrt(b^2+gamma^2/4)-sqrt((x-b)^2+gamma^
 #'
 
 make_array <- function(d3_mat, pars, pars.year, year_replace_future, specific_value=NA, rand=FALSE, rand_seed=NULL){
+  assertthat::assert_that(length(year_replace_future)==1)
 
   if(length(dim(pars))==3){
     d3_mat <- pars
