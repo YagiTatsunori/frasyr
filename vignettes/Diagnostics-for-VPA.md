@@ -1,21 +1,16 @@
 ---
-title: "\\small FRA-SA2026-ABCWG02-03"
-subtitle: "\\Large VPAモデル診断用スクリプト"
-author: "資源評価高度化作業部会[^1]"
-date: "`2026年6月1日`"
+title: "VPAモデル診断スクリプト"
+author: "濵邉昂平・市野川桃子"
+date: "2024-06-06"
 output:
   pdf_document:
-    latex_engine: xelatex
-    toc: no
-    keep_tex: true
-    includes: 
-      in_header: preamble.tex
-  word_document:
     toc: no
   html_document:
     highlight: kate
     toc: no
     toc_float: no
+  word_document:
+    toc: no
 vignette: "%\\VignetteIndexEntry{2. Model diagnostics with VPA} %\\VignetteEncoding{UTF-8}
   %\\VignetteEngine{knitr::rmarkdown}\n"
 editor_options:
@@ -23,87 +18,66 @@ editor_options:
     wrap: 72
 ---
 
-```{r, echo=FALSE, include=FALSE}
+# Appendix
 
-#render("text.Rmd")
-
-## Global options
-options(max.print="75")
-knitr::opts_chunk$set(echo=TRUE,
-#                     cache=TRUE,
-               prompt=FALSE,
-               tidy=FALSE,
-               comment=NA,
-               message=FALSE,
-               warning=FALSE,
-	       fig.width=7,fig.height=5)
-
-#devtools::load_all()
-library(tidyr)
-library(dplyr)
-library(purrr)
-library(ggplot2)
-library(stringr)
-
-```
-
-## 2026年度変更点
+## 2024年度変更点
 
 <font color="red">
 
-- 文章の表現など、細かい内容を修正
-- **注意事項**
-  - 以下のような計算法の資源には対応していません
-    - 最高齢や+グループが時系列で変化する資源
-    - 直近年の加入尾数を、過去の平均で計算している資源
-    - 直近年の加入尾数にRPS等を乗じている資源
-    - etc...
-  - 上述のような資源担当の方は別途お問い合わせください
-  - その場合、関数の修正 or VPAの再実行等でご対応頂きます
+-   残差プロット
+    -   残差プロットのスムージング曲線がデフォルトで表記されません
+    -   観測誤差と自己相関係数が図中に出力されます
+    -   残差プロットの背景に観測誤差に基づく信頼区間が表記されます
+-   **注意事項**
+    -   以下のような計算法の資源には対応していません
+        -   最高齢や+グループが時系列で変化する資源
+        -   直近年の加入尾数を、過去の平均で計算している資源
+        -   直近年の加入尾数にRPS等を乗じている資源
+        -   etc...
+    -   上述のような資源担当の方は別途お問い合わせください
+    -   その場合、関数の修正 or VPAの再実行等でご対応頂きます
 
 </font>
 
-[^1]: English title (author): Procedures for model diagnostics in stock assessment and guidelines for reporting results (fiscal year 2026). (Working Group on Advancing Stock Assessment)
-
 ## VPAモデル診断用スクリプト
 
-- VPAのモデル診断を網羅的に実施できる関数と、使用例のスクリプトを配布します
-- 基本的には「チューニングあり」VPAが対象ですが、「感度分析」と「レトロスペクティブ解析」はチューニングなしVPAでも実施できますので、実施してください
+-   VPAのモデル診断を網羅的に実施できる関数と、使用例のスクリプトを配布します
+-   基本的には「チューニングあり」VPAが対象ですが、「感度分析」と「レトロスペクティブ解析」はチューニングなしVPAでも実施できまするので、実施してください
 
 ## 0. 事前準備
 
-- frasyrやggplot2などをインストールして呼び出しておいてください
+-   frasyrやggplot2などをインストールして呼び出しておいてください
 
 **※ tidyr, dplyr, purrr, ggplot2,
 stringerの5つは"tidyverse"というパッケージの中にまとめてあるので`library(tidyverse)`だけでも大丈夫です**
 
-```{r, eval = TRUE}
 
+``` r
 # frasyrの最新版（dev）をインストールする
 #devtools::install_github("ichimomo/frasyr@dev")
+
 library(frasyr)
 library(tidyr)
 library(dplyr)
 library(purrr)
 library(ggplot2)
 library(stringr)
-
 ```
 
 ## 1. 感度分析(チューニングあり・なし）
 
-- 資源評価モデルにおけるさまざまな仮定の変化が、推定資源量などにどのような影響を与えるか確認するために実施するものです
-- 理想的には再生産関係・管理基準値・将来予測などへの影響も見たほうが良いですが、どこまでやるかは難しいところです
-- **全ての項目を実施頂く必要はありません**
-- **あくまで効きそうな仮定、その資源で問題となっているパラメータについて実施してください**
-- 感度分析の対象：
-  - 生物パラメータ各種（自然死亡係数、年齢別体重、成熟率など）
-  - $\alpha$ (プラスグループとプラスグループ-1歳のFの比)
-  - 最終年のFの仮定
-    - チューニングなしの場合:
-      最終年のF＝過去数年のFと同じと仮定しているか
-    - チューニングありの場合：全F推定かsel.updateか
-- 近年の資源量推定に関わる重要な部分については、資源評価票で別途議論してください（たとえば近年の体重の変化が問題になっており、その値を変えたときのABCへの影響を調べたいなど）
+-   資源評価モデルにおけるさまざまな仮定の変化が、推定資源量などにどのような影響を与えるか確認するために実施するものです
+-   理想的には再生産関係・管理基準値・将来予測などへの影響も見たほうが良いですが、どこまでやるかは難しいところです
+-   **全ての項目を実施頂く必要はありません**
+-   **あくまで効きそうな仮定、その資源で問題となっているパラメータについて実施してください**
+-   感度分析の対象：
+    -   生物パラメータ各種（自然死亡係数、年齢別体重、成熟率など）
+    -   α (プラスグループとプラスグループ-1歳のFの比)
+    -   最終年のFの仮定
+        -   チューニングなしの場合:
+            最終年のF＝過去数年のFと同じと仮定しているか
+        -   チューニングありの場合：全F推定かsel.updateか
+-   近年の資源量推定に関わる重要な部分については、別途資源評価票で別途議論してください（たとえば近年の体重の変化が問題になっており、その値を変えたときのABCへの影響を調べたいなど）
 
 感度分析は`do_sensitivity_vpa`関数を使えばできます。
 引数で重要なものは、VPA計算の結果（`vpa`関数の実行結果のオブジェクト）、感度分析を行いたい指標`what_replace`、感度分析の値`value`の3つです。また、結果のグラフについての引数は`what_plot`と`ncol`があります。出力数を減らしたい場合は`what_plot`に出力したい結果だけ入力してください。`ncol`はグラフの列数です。適宜調整してください。
@@ -112,49 +86,51 @@ library(stringr)
 
 関数の引数について（**特に`value`に与える**<font color="red">データの型</font>について）、不明点等ありましたら、以下のように`help`を使って確認してみてください。
 
-```{r, eval = TRUE}
 
+``` r
 help(do_sensitivity_vpa)
-
 ```
 
 ### 生物パラメータ各種
 
-### 自然死亡係数
+#### 自然死亡係数
 
 `what_replace="M"`にすると自然死亡係数について感度分析を行えます。`value`には、感度分析を行いたい割合を`numeric`型で入れてください。（以下の例では、もとの自然死亡係数を0.5倍、1.5倍、2倍にした感度分析結果を返す）
 
-```{r}
 
+``` r
 res_vpa_sensitivity <- do_sensitivity_vpa(res_vpa_estb,
                                           what_replace = "M", 
                                           value = c(0.5, 1.5, 2))
-
 ```
 
-- `$result`の中にはvpa計算の結果
-- `$graph`の中には結果の図 がそれぞれ、入っています。
+-   `$result`の中にはvpa計算の結果
+-   `$graph`の中には結果の図 がそれぞれ、入っています。
 
 今回の例では、`value`を3通り仮定したので、それぞれの結果がリスト型式で以下のように入っております。
 
-```{r}
 
+``` r
 names(res_vpa_sensitivity$result)
-
 ```
 
-```{r}
+```
+[1] "Sensitivity M= x0.5" "Sensitivity M= x1.5" "Sensitivity M= x2"  
+```
 
+
+``` r
 res_vpa_sensitivity$graph
-
 ```
+
+![plot of chunk unnamed-chunk-6](figure/unnamed-chunk-6-1.png)
 
 自然死亡係数を大きくすると、資源量のスケールも併せて大きくなっています。
 
 直接Mの行列を入力しても実行できます。
 最近年のMの仮定について見たい、掛け算ではなく足し算で実行したい、等の場合は行列を与えてください
 
-### 年齢別体重
+#### 年齢別体重
 
 年齢別体重を置き換える場合は、`what_replace = "waa"`とします。
 自然死亡係数の場合と同様に、`value`に入れた値がもとの年齢別体重にかけられます。
@@ -163,8 +139,8 @@ res_vpa_sensitivity$graph
 
 **この他、`plot_year`に作図したい年（x軸の範囲）を指定することもできます**
 
-```{r}
 
+``` r
 res_vpa_sensitivity <- do_sensitivity_vpa(res_vpa_estb,
                                           what_replace = "waa",
                                           value = c(0.8, 1.2),
@@ -174,13 +150,14 @@ res_vpa_sensitivity <- do_sensitivity_vpa(res_vpa_estb,
                                           ncol=3
                                           )
 res_vpa_sensitivity$graph
-
 ```
+
+![plot of chunk unnamed-chunk-7](figure/unnamed-chunk-7-1.png)
 
 また、解析に用いたwaaと同じ長さの`matrix`であれば、`list`にまとめて`value`に任意の値を与えることができます。
 
-```{r}
 
+``` r
 res_vpa_sensitivity <- do_sensitivity_vpa(res_vpa_estb,
                                           what_replace = "waa",
                                           value = list(matrix(rep(1:4,10),nrow = 4),
@@ -191,34 +168,33 @@ res_vpa_sensitivity <- do_sensitivity_vpa(res_vpa_estb,
                                           ncol=3
                                           )
 res_vpa_sensitivity$graph
-
 ```
 
-### 漁獲物中の年齢別体重
+![plot of chunk unnamed-chunk-8](figure/unnamed-chunk-8-1.png)
+
+#### 漁獲物中の年齢別体重
 
 漁獲量計算と資源量計算で異なる年齢別体重を用いている場合には、漁獲物中の年齢別体重の設定についても感度分析ができます。この場合は、`what_replace = "waa.catch"`とします。
 `value`に入れる値の型は`index = waa`の場合と同じく、`numeric`または`list`型です。
 （この例の場合には、漁獲量用の年齢別体重が設定されていないため、エラーとなります。）
 
-```{r, eval=FALSE}
 
+``` r
 res_vpa_sensitivity <- do_sensitivity_vpa(res_vpa_estb,
                                           what_replace = "waa.catch",
                                           value = c(0.8, 1.2),
                                           what_plot=c("SSB","biomass","U","Recruitment",
                                                       "fish_number","fishing_mortality"), 
-                                          ncol=3
-                                          )
-
+                                          ncol=3)
 ```
 
-### 成熟率
+#### 成熟率
 
 成熟率を置き換える場合は、`what_replace = "maa"`とします。
 年齢別体重の場合と同様`value`には、`list`に格納した行列を与えてください。
 
-```{r}
 
+``` r
 res_vpa_sensitivity <- do_sensitivity_vpa(res_vpa_estb, 
                                           what_replace = "maa", 
                                           value = list(matrix(rep(seq(0,1,length=4),10),nrow = 4),
@@ -229,16 +205,17 @@ res_vpa_sensitivity <- do_sensitivity_vpa(res_vpa_estb,
                                           ncol=3
                                           )
 res_vpa_sensitivity$graph
-
 ```
 
-### $\alpha$
+![plot of chunk unnamed-chunk-10](figure/unnamed-chunk-10-1.png)
 
-$\alpha$を置き換えたい場合は、`what_replace = "alpha"`とします。
+### α
+
+αを置き換えたい場合は、`what_replace = "alpha"`とします。
 `value`には直接仮定したい値を入れてください。
 
-```{r}
 
+``` r
 res_vpa_sensitivity <- do_sensitivity_vpa(res_vpa_estb, 
                                           what_replace = "alpha", 
                                           value = c(0.9,0.8),
@@ -246,42 +223,52 @@ res_vpa_sensitivity <- do_sensitivity_vpa(res_vpa_estb,
                                                       "fish_number","fishing_mortality"), 
                                           ncol=3
                                           )
-res_vpa_sensitivity$graph
+```
 
 ```
+[1] "Warning! The estimated F for the older ages may not be accurate if C<<N is not satisfied for the older ages."
+[1] "Warning! The estimated F for the older ages may not be accurate if C<<N is not satisfied for the older ages."
+```
+
+``` r
+res_vpa_sensitivity$graph
+```
+
+![plot of chunk unnamed-chunk-11](figure/unnamed-chunk-11-1.png)
 
 ### チューニング方法について
 
 **チューニングの有無で行える感度分析が大きく変わります。**
 
-- チューニングなしVPA(`tune=FALSE`で解析している) :
-  `tf.year`について感度分析を行います
-- チューニングVPA(`tune=TRUE`で解析している)
-  - 選択率更新法(`sel.update=TRUE`) :
-    選択率更新法の代わりに全F推定法を行います
-  - 全F推定法(`term.f="all"`) : 全F推定の代わりに選択率更新法を行います
+-   チューニングなしVPA(`tune=FALSE`で解析している) :
+    `tf.year`について感度分析を行います
+-   チューニングVPA(`tune=TRUE`で解析している)
+    -   選択率更新法(`sel.update=TRUE`) :
+        選択率更新法の代わりに全F推定法を行います
+    -   全F推定法(`term.f="all"`) :
+        全F推定の代わりに選択率更新法を行います
 
-### チューニングなしVPAの場合
+#### チューニングなしVPAの場合
 
 チューニングなしVPAの場合、最終年のFが過去何年分の平均になるかという仮定の部分の値を変えて感度分析を行います。
 
-```{r, eval=FALSE}
 
+``` r
 # チューニングなしVPAの場合
 res_tmp <- vpa(vpadat_estb, tf.year=1996:1999, last.catch.zero = FALSE, 
                Pope = TRUE, p.init = 0.8, tune=FALSE)
 tmp <-   do_sensitivity_vpa(res_tmp,what_replace = "tuning", value = list(1995:1999, 1998:1999))
                                                       # 2つの数列をlist型にしてvalueを与えています
-
 ```
 
-### 選択率更新法の場合
+#### 選択率更新法の場合
 
 今回の例では選択率更新法で推定されているため、全F推定で感度分析が行われます。
 これまでと同様に、`what_replace = "tuning"`といれれば大丈夫です。
 **選択率更新法の代わりに感度分析で全F推定を行う場合、`value`に値を入れる必要はありません**
 
-```{r}
+
+``` r
 res_tmp <- vpa(vpadat_estb, tf.year=1998:2000, last.catch.zero = FALSE, 
                Pope = TRUE, p.init = 0.5, tune=TRUE, sel.update=TRUE)
 res_vpa_sensitivity <- do_sensitivity_vpa(res_tmp, 
@@ -291,16 +278,17 @@ res_vpa_sensitivity <- do_sensitivity_vpa(res_tmp,
                                           ncol=3
                                           )
 res_vpa_sensitivity$graph
-
 ```
 
-### 全F推定の場合
+![plot of chunk unnamed-chunk-13](figure/unnamed-chunk-13-1.png)
+
+#### 全F推定の場合
 
 全F推定の場合は、代わりに選択率更新法で感度分析が行われます。
 また先のチューニングなしVPAのように、最終年Fの仮定についても値を変えて、感度分析することができます。
 
-```{r, eval=FALSE}
 
+``` r
 # 全F推定法の場合
 res_tmp <- vpa(vpadat_estb, tf.year=1997:1999, last.catch.zero = FALSE, 
                Pope = TRUE, p.init = 0.5, tune=TRUE, sel.update=FALSE, term.F = "all") 
@@ -309,12 +297,12 @@ tmp <- do_sensitivity_vpa(res_tmp, what_replace = "tuning", value = list(1995:20
                                                       # チューニングなしVPAと同じです
 ```
 
-### リッジペナルティ$\lambda$について
+### リッジペナルティλについて
 
-全F推定でリッジVPAを行っている場合（$\lambda$＞0）には$\lambda$の値についての感度分析も実施してみてください。
+全F推定でリッジVPAを行っている場合（λ＞0）にはλの値についての感度分析も実施してみてください。
 
-```{r}
 
+``` r
 # リッジVPAの場合
 res_tmp <- vpa(vpadat_estb, tf.year=1997:1999, last.catch.zero = FALSE, 
                Pope = TRUE, p.init = 0.5, tune=TRUE, term.F = "all", lambda = 0.2)
@@ -324,83 +312,86 @@ tmp <- do_sensitivity_vpa(res_tmp, what_replace = "lambda", value = c(0,0.1,0.5,
                           ncol=3)
                                     # lambdaの値を"numeric型"で与えています
                                     # list型ではないので気を付けてください
-
 ```
 
 ### b (hyperstability/depletion)
 
 bを推定した場合、bを推定しない(b=1)場合について、感度分析を実施してください。`what_replace = "b"`とするとbについて感度分析できます。また、bを推定していない場合も適宜bを推定（あるいは固定）してみて、感度分析を行ってみてください。
 
-- bの値を与えたい場合、`numeric`型、または`list`型（複数与えたい場合）で値を入れる（ベースケースでbを推定しているが、bを推定しない感度分析を実施する場合は`value=1`を与える）
-- bを推定したい場合、`"b.est"`と入れる
+-   bの値を与えたい場合、`numeric`型、または`list`型（複数与えたい場合）で値を入れる（ベースケースでbを推定しているが、bを推定しない感度分析を実施する場合は`value=1`を与える）
+-   bを推定したい場合、`"b.est"`と入れる
 
-```{r, eval=FALSE}
 
+``` r
 # b推定しているが、bを固定する場合
 tmp <- do_sensitivity_vpa(res_vpa_estb, what_replace = "b", value = list(c(1,1),c(1.2,1.2))) 
 # bを固定しているが、bを推定する場合
 tmp <- do_sensitivity_vpa(res_vpa_estb, what_replace = "b", value = c("b.est"))
-
 ```
 
 ## 2. レトロスペクティブ解析
 
-- 過去～7年分くらいのデータを削除して資源計算をしなおした場合に、資源量やFの推定値が傾向を持って変化するようなレトロスペクティブパターンが見られるかどうかを調べます。その際には
-  - 非線形パラメータbを推定しなおすかどうか
-  - リッジの場合、$\lambda$を推定しなおすかどうか
-    という問題がありますが、デフォルトは、これらのパラメータは固定（最終年で推定されたものを用いる）して計算してみます。
-- `vpa(rec)`でrec引数を指定していも利用可能です
-- ただし、指定している`rec.year`より遡ると、効果が消えます
+-   過去～7年分くらいのデータを削除して資源計算をしなおした場合に、資源量やFの推定値が傾向を持って変化するようなレトロスペクティブパターンが見られるかどうかを調べます。その際には
+    -   非線形パラメータbを推定しなおすかどうか
+    -   リッジの場合、λを推定しなおすかどうか
+        という問題がありますが、デフォルトは、これらのパラメータは固定（最終年で推定されたものを用いる）して計算してみます。
+-   `vpa(rec)`でrec引数を指定していも利用可能です
+-   ただし、指定している`rec.year`より遡ると、効果が消えます
 
 レトロスペクティブ解析は`do_retrospective_vpa`関数を用いることで、
 
-- 結果の出力
-- Mohn's rhoの出力
-- bの再推定結果の値
-- 作図
+-   結果の出力
+-   Mohn's rhoの出力
+-   bの再推定結果の値
+-   作図
 
 までを一貫して行えます。
 
 引数として、
 
-- `res` : vpa計算の結果のオブジェクトの他に
-- `n_retro` :
-  レトロスペクティブ解析を何年さかのぼって実行するか（デフォルトで5年）
-- `b_reest` :
-  b(hyperstability/depletion)をレトロスペクティブ解析内で再推定するか
-- `what_plot` : 作図で何を出力するか
-- **`plot_year` : 作図したい年（作図のx軸の範囲）**
-- `ncol` : 作図の列数
+-   `res` : vpa計算の結果のオブジェクトの他に
+-   `n_retro` :
+    レトロスペクティブ解析を何年さかのぼって実行するか（デフォルトで5年）
+-   `b_reest` :
+    b(hyperstability/depletion)をレトロスペクティブ解析内で再推定するか
+-   `what_plot` : 作図で何を出力するか
+-   **`plot_year` : 作図したい年（作図のx軸の範囲）**
+-   `ncol` : 作図の列数
 
 があります。
 
 今回の解析結果`res_vpa_estb`を使って、7年分をさかのぼってレトロスペクティブ解析する場合、以下のようにコードします。
 
-```{r}
 
+``` r
 res_vpa_retrospective <- do_retrospective_vpa(res_vpa_estb,
                                               n_retro = 7,
                                               b_reest = FALSE)
 res_vpa_retrospective$mohn_rho
+```
 
+```
+            N             B           SSB             R             F 
+-1.353966e-01 -1.019165e-01 -9.331420e-02 -1.829777e-01  1.626003e+05 
 ```
 
 結果はlist型式でまとめてあり、`$`を使って呼び出すことが可能です。resultはVPAの推定結果、mohn_rhoはmorhのrhoの値、graphはグラフ、b_resはbの再推定結果です。またMohn's
 rhoは、グラフ中にも併記してあります。 ここで、漁獲係数のMohn's
 rhoは年齢別漁獲係数を全て足し合わせた値となっています。
 
-```{r}
 
+``` r
 res_vpa_retrospective$graph
-    
 ```
 
-### レトロスペクティブ解析中でbの再推定を行う場合
+![plot of chunk unnamed-chunk-18](figure/unnamed-chunk-18-1.png)
+
+#### レトロスペクティブ解析中でbの再推定を行う場合
 
 また、bをレトロスペクティブ解析内で再推定したい場合は以下のようにコードしてください。
 
-```{r}
 
+``` r
 res_tmp <- vpa(vpadat_estb, tf.year=1997:1999, last.catch.zero = FALSE, Pope = TRUE, 
                p.init = 0.5, tune=TRUE, sel.update=FALSE, term.F = "all", b.est = TRUE) 
                                                               # まずbを推定するvpaを実行しています
@@ -410,17 +401,28 @@ res_vpa_retrospective <- do_retrospective_vpa(res_tmp,
                                               b_reest = TRUE # ここをTRUEにしてください!!
                                               )
 res_vpa_retrospective$b_res
+```
 
+```
+# A tibble: 6 × 4
+  `2000` `1999` `1998` `1997`
+   <dbl>  <dbl>  <dbl>  <dbl>
+1  1.11   1.04   0.792  0.603
+2  0.564  0.736  0.826  0.612
+3  0.854  0.679  0.356  0.257
+4  0.578  0.523  0.603  0.383
+5  0.657  0.892  0.628  0.480
+6  1.14   1.33   1.47   1.11 
 ```
 
 このように各レトロスペクティブ解析ごとに、bを推定していることが確認できました。（**ダミーデータなので変な値となっています**）
 
-### 2段階法の場合
+#### 2段階法の場合
 
 VPAを2段階法で行っている場合は、`res_step1`引数に1段階目のVPA結果のオブジェクトを与えてください。
 
-```{r}
 
+``` r
 res_tmp1 <- vpa(vpadat_estb, tf.year=1997:1999, last.catch.zero = FALSE, Pope = TRUE, 
                 p.init = 0.5, tune=FALSE, term.F = "max", b.est = FALSE,fc.year=1998:2000) 
 res_tmp2 <- vpa(vpadat_estb, tf.year=1997:1999, last.catch.zero = FALSE, Pope = TRUE, 
@@ -435,9 +437,9 @@ res_vpa_retrospective <- do_retrospective_vpa(res_tmp2,
                                               # ここに1段階目のチューニングなしVPAを与えてください
                                               )
 res_vpa_retrospective$graph
-
-
 ```
+
+![plot of chunk unnamed-chunk-20](figure/unnamed-chunk-20-1.png)
 
 ## 3. パラメータの収束の確認 (jitter analysis)
 
@@ -455,22 +457,26 @@ analysisとその結果の作図が行われます。
 基本的に、vpa計算の結果のオブジェクトのみを与えれば計算が行われます。
 その他に引数として、
 
-- `what_plot` : 作図したい年齢
-- `TMB` : TMBで解析する（
-  **始めて実行する場合は`use_rvpa_tmb()`を先に実行** ）
+-   `what_plot` : 作図したい年齢
+-   `TMB` : TMBで解析する（
+    **始めて実行する場合は`use_rvpa_tmb()`を先に実行** ）
 
 を指定します。コマンドは以下の通りです。
 
-```{r}
 
+``` r
 res_vpa_jitter <- do_estcheck_vpa(res_vpa_estb, n_ite=10)
+```
 
+```
+Maximum likelihood in jitter analysis is:  23.60018 
+Likelihood with estimated parameters is:  23.60018 
 ```
 
 最初に引数で与えたVPA結果について、
 
-- ヘッセ行列の対角成分が正であるか
-- パラメータの推定結果が収束してるか
+-   ヘッセ行列の対角成分が正であるか
+-   パラメータの推定結果が収束してるか
 
 を知らせてくれます。ヘッセ行列の対角成分に負がある（本来正になる値であり、パラメータ推定が失敗してる）、あるいは収束していない場合、ここで関数が止まります。
 再度、`VPA`関数を使って解析してください。（初期値を変える、全F推定の場合パラメータを減らす、資源量指数の非線形性を考慮している場合はbを与えるあるいは1にする、などの工夫が必要となります）
@@ -481,17 +487,25 @@ analysisが行われます。n_ite数分のVPA計算を行います。
 で十分です。推定値と初期値の大体の関係が見れれば問題ありませんが、初期値に応じて、Fが異なる値で推定される（大きな値に発散せずに）場合には注意が必要です。
 その結果が`res_vpa_jitter`内にあり、それぞれ、
 
-- `$initial_value`に初期値
-- `$p_name`推定したパラメータ（漁獲係数）の年齢
-- `$value`推定値や尤度、収束の値を返す
-- `$graph`初期値と推定値or尤度の関係の図
+-   `$initial_value`に初期値
+-   `$p_name`推定したパラメータ（漁獲係数）の年齢
+-   `$value`推定値や尤度、収束の値を返す
+-   `$graph`初期値と推定値or尤度の関係の図
 
 が入っています。
 
-```{r}
+
+``` r
 res_vpa_jitter$graph$estimated # 推定されたF
+```
+
+![plot of chunk unnamed-chunk-22](figure/unnamed-chunk-22-1.png)
+
+``` r
 res_vpa_jitter$graph$likelihood # 対数尤度（大きいほど良い）
 ```
+
+![plot of chunk unnamed-chunk-22](figure/unnamed-chunk-22-2.png)
 
 ここで赤い横線は与えた結果の推定値と尤度を表しています。
 
@@ -516,33 +530,38 @@ analysis）のほうが大きい場合には、上述のように**Fが発散し
 
 残差プロットは`plot_residual_vpa`関数で実行できます。大きく3種類のプロットを書くことができます。
 
-- `$year_resid`:
-  対数残差を時系列にプロットしたもの。先述の残差の傾向と外れ値の把握に利用。標準化残差のプロットについては`$year_sd_resid`中にある。
-- `$fitting_Index`:
-  CPUEと予測CPUEをそれぞれ重ねてプロットしたもの。データと推定結果のフィッティングを見るもの。
-- `$abund_Index`:
-  資源量/資源重量/親魚重量とその予測CPUEとの関係。赤い線が推定した資源量とその指数の線形/非線形性を表す。
+-   `$year_resid`:
+    対数残差を時系列にプロットしたもの。先述の残差の傾向と外れ値の把握に利用。標準化残差のプロットについては`$year_sd_resid`中にある。
+-   `$fitting_Index`:
+    CPUEと予測CPUEをそれぞれ重ねてプロットしたもの。データと推定結果のフィッティングを見るもの。
+-   `$abund_Index`:
+    資源量/資源重量/親魚重量とその予測CPUEとの関係。赤い線が推定した資源量とその指数の線形/非線形性を表す。
 
 また`index_name`引数中に、各指標の名前を与えるとプロットに反映されます（ない場合はIndex01、Index02・・・となります）。与える場合、用いた指標の数分引数に入れてください。
 
-```{r}
 
-plot_example <- plot_residual_vpa(res_vpa_estb, index_name = c("CPUE1", "CPUE2","CPUE3",
-                                                               "CPUE4","CPUE5","CPUE6"),
-                                  plot_smooth=TRUE)
+``` r
+plot_example <- plot_residual_vpa(res_vpa_estb, index_name = c("CPUE1", "CPUE2","CPUE3","CPUE4","CPUE5","CPUE6"),plot_smooth=TRUE)
 plot_example$year_resid
-plot_example$abund_Index
-
 ```
+
+![plot of chunk unnamed-chunk-23](figure/unnamed-chunk-23-1.png)
+
+``` r
+plot_example$abund_Index
+```
+
+![plot of chunk unnamed-chunk-23](figure/unnamed-chunk-23-2.png)
 
 また、`plot_year`引数でプロットしたい年を指定することも可能です。
 
-```{r}
 
+``` r
 plot_example <- plot_residual_vpa(res_vpa_estb, plot_year = 1995:2000)
 plot_example$fitting_Index
-
 ```
+
+![plot of chunk unnamed-chunk-24](figure/unnamed-chunk-24-1.png)
 
 これらの残差プロットは今回のバージョンから、`vpa`関数実行時に引数`plot = T`にすると自動生成されるようになっています。モデル診断の最も基本パートとなるので、是非活用ください。
 
@@ -554,23 +573,25 @@ plot_example$fitting_Index
 これによって、外れ値の検出ができます。
 特に、最近年に外れ値がある場合、その値が資源量推定結果に与える影響は大きいことが想定されるので、後述のジャックナイフ法などを通して結果の妥当性を評価してください。
 
-```{r}
 
+``` r
 plot_example$year_resid
-
 ```
+
+![plot of chunk unnamed-chunk-25](figure/unnamed-chunk-25-1.png)
 
 もし信頼区間の影が邪魔で消したい場合は、`resid_CI=FALSE`としてください。
 
-```{r}
 
+``` r
 plot_residual_vpa(res_vpa_estb, 
-                  index_name = c("CPUE1","CPUE2","CPUE3",
+                  index_name = c("CPUE1", "CPUE2","CPUE3",
                                  "CPUE4","CPUE5","CPUE6"),
                   plot_smooth=TRUE,
                   resid_CI = FALSE)$year_resid
-
 ```
+
+![plot of chunk unnamed-chunk-26](figure/unnamed-chunk-26-1.png)
 
 また、自己相関係数も明記されるようになりました。
 もしこの自己相関係数が有意に大きいあるいは小さい場合、`rho=0.6*`のように、\*印が付きます。
@@ -587,33 +608,40 @@ plot_residual_vpa(res_vpa_estb,
 観測値（資源量指数）を1つずつ抜いて解析を行うことで、影響力の強いデータや外れ値を検出する方法です。
 `do_jackknife_vpa`関数で自動で観測値を抜いて再解析を行います。
 
-- `plot_year`に作図したい年（x軸の範囲）を指定することもできます
+-   `plot_year`に作図したい年（x軸の範囲）を指定することもできます
 
-- **`scale_value`に任意の値を与えることで、プロットの点の形を任意で指定できます（ベースモデル＋ジャックナイフの数分与えてください）**
+-   **`scale_value`に任意の値を与えることで、プロットの点の形を任意で指定できます（ベースモデル＋ジャックナイフの数分与えてください）**
 
-- 　**=\>
-  ジャックナイフ法の他に、感度分析、レトロスペクティブ解析でも指定できます**
+-   　**=\>
+    ジャックナイフ法の他に、感度分析、レトロスペクティブ解析でも指定できます**
 
 引数`method`はデフォルトで"index"となっており、資源量指数の種類ごとに取り除いて解析を行います（つまり、資源量指数の種類分、結果が返ってきます）。一方、それぞれの種類を年ごとに取り除きたい場合は"all"を選択してください。この場合、資源量指数の種類×年数分、取り除いて計算するためデータ数によっては多くの計算時間を必要とする点に気を付けてください。
 
-```{r}
 
+``` r
 res_vpa_jackknife <- do_jackknife_vpa(res_vpa_estb,
                                       what_plot = c("SSB", "biomass", "U", "Recruitment",
                                                     "fish_number", "fishing_mortality"),
                                       ncol = 3, plot_year = c(1995, 2000),
                                       scale_value = 2:8)
 res_vpa_jackknife$JKplot_vpa # 全体の結果
+```
+
+![plot of chunk unnamed-chunk-27](figure/unnamed-chunk-27-1.png)
+
+``` r
 res_vpa_jackknife$JKplot_par + ylim(0,1) # 最終年のFの比較 (ここではylimで縦軸を調整しています)
 ```
+
+![plot of chunk unnamed-chunk-27](figure/unnamed-chunk-27-2.png)
 
 ## 6. ブートストラップによる信頼区間推定
 
 ブートストラップ法は乱数でデータを再生成し、信頼区間等を推定する方法です。
 ここでは
 
-- CPUEについて乱数生成する方法
-- 年齢別漁獲尾数について乱数生成する方法
+-   CPUEについて乱数生成する方法
+-   年齢別漁獲尾数について乱数生成する方法
 
 それぞれについて、新規関数とともに紹介します。
 また**パッケージの更新速度の都合上、ブートストラップ標本数は10個**としていますが、<font color="blue">95%信頼区間などを正確に計算したい場合は**1000回（デフォルト）**</font>ほど必要です。
@@ -626,62 +654,97 @@ res_vpa_jackknife$JKplot_par + ylim(0,1) # 最終年のFの比較 (ここではy
 ### 1. CPUEのブートストラップ法について
 
 先述の通り、ブートストラップ法はデータをリサンプリングする方法ですが、VPAでは残差をリサンプリングすることで、データ（CPUE）を再生成します。
-frasyrの中にはブートストラップ法を自動で行う`boo.vpa`関数があり、`type = "index"`とすると、CPUEのブートストラップを実行します。また、その結果を`plot_boot`関数に与えることで、信頼区間のある資源動態の描画ができます。
+frasyrの中にはブートストラップ法を自動で行う`boo.vpa`関数がありますが、今回作成した`plot_resboot_vpa`関数内でも`boo.vpa`関数を使っています。したがって、`plot_resboot_vpa`関数に直接vpa計算結果のオブジェクトを入れてください。
 
-- 引数`method`でブートストラップ法の方法を変えることができます。基本はパラメトリックブートストラップで問題ありません。ノンパラメトリックブートストラップ法では残差を重複ありでランダムにデータに足し合わせて再生成します。一方、パラメトリックブートストラップは平均0、分散が残差の分散となるような正規分布から乱数でデータを生成して、それぞれ解析する方法です。
+-   引数`B_method`でブートストラップ法の方法を変えることができます。基本はパラメトリックブートストラップで問題ありません。ノンパラメトリックブートストラップ法では残差を重複ありでランダムにデータに足し合わせて再生成します。一方、パラメトリックブートストラップは平均0、分散が残差の分散となるような正規分布から乱数でデータを生成して、それぞれ解析する方法です。
 
-  - `"p"`: パラメトリックブートストラップ法（デフォルト）
-  - `"n"`: ノンパラメトリックブートストラップ法
-  - `"r"`: 残差のスムージング後にBootstrap-t法を行う方法。
+    -   `"p"`: パラメトリックブートストラップ法（デフォルト）
+    -   `"n"`: ノンパラメトリックブートストラップ法
+    -   `"r"`: 残差のスムージング後にBootstrap-t法を行う方法。
 
-- `plot_boot`関数では、引数`ci_range`で信頼区間の値を指定できます。デフォルトは0.95です（95％信頼区間の表記）。
+-   引数`ci_range`で信頼区間の値を指定できます。デフォルトは0.95です（95％信頼区間の表記）。
 
-```{r}
 
-res_boot1 = boo.vpa(res_vpa_estb, type = "index", B_ite = 10, method = "p")
-plot_boot1 = plot_boot(res_boot1, ci_range = 0.95)
-
-library(patchwork)
-plot_boot1$plot_ssb/plot_boot1$plot_rec/plot_boot1$plot_biomass
+``` r
+res_vpa_bootstrap <- plot_resboot_vpa(res_vpa_estb, B_ite = 10)
+```
 
 ```
+[1] 1
+[1] 2
+[1] 3
+[1] 4
+[1] 5
+[1] 6
+[1] 7
+[1] 8
+[1] 9
+[1] 10
+```
+
+``` r
+library(patchwork)
+res_vpa_bootstrap$plot_ssb/res_vpa_bootstrap$plot_rec/res_vpa_bootstrap$plot_biomass
+```
+
+![plot of chunk unnamed-chunk-28](figure/unnamed-chunk-28-1.png)
 
 このようにSSB、加入量、バイオマスそれぞれについて95％信頼区間とともに資源動態の作図ができます。ここで使っている`patchwork`パッケージは、`ggplot2`の作図オブジェクトを後からくっつけることが可能なパッケージです。frasyrインストール時に一緒にインストールされます。
 
 ブートストラップ法は資源量の信頼区間だけでなく、パラメータの信頼区間も算出出来ます。
 ここでは最終年最高齢のFの信頼区間を出しています。
 
-```{r}
 
+``` r
 res_tmp <- numeric()
-for(i in 1:10) res_tmp[i] <- as.numeric(res_boot1[[i]]$Fc.at.age[4])
+for(i in 1:10) res_tmp[i] <- as.numeric(res_vpa_bootstrap$res_boot[[i]]$Fc.at.age[4])
 quantile(res_tmp, probs = c(0.025,0.5,0.975))
-
 ```
 
-この他、各パラメータの相関関係について、ブートストラップ標本を基にプロットが得られます。相関係数が非常に高い（0.9以上など）パラメータのペアがある場合、その２つのパラメータを同時に推定することが難しいことを示している場合がありますので、その場合はモデルの構造をよく検討してください。
-
-```{r,fig.width=12,fig.height=10}
-
-plot_boot1$plot_cor
-
 ```
+     2.5%       50%     97.5% 
+0.5087769 3.2956331 6.4795182 
+```
+
+この他、各パラメータの相関関係について、ブートストラップ標本を基にプロットが得られます。
+
+
+``` r
+res_vpa_bootstrap$plot_cor
+```
+
+![plot of chunk unnamed-chunk-30](figure/unnamed-chunk-30-1.png)
 
 ### 2. 年齢別漁獲尾数について乱数生成する方法
 
 VPAは年齢別漁獲尾数（catch at
-age）が真であると仮定して推定するため、年齢別漁獲尾数の不確実性を評価することが出来ないモデルです。
-`boo.vpa`関数では`type="caa"`引数を与えると、年齢別漁獲尾数についてブートストラップ法を実行可能です。ブートストラップでは、毎年の総漁獲尾数を対数正規分布（B_cvで変動係数を設定、デフォルトは0.2）で振らせたあと、漁獲物の年齢組成を多項分布で振らせます（そのさいの誤差の大きさはess引数で設定、デフォルト値は200、大きいほど誤差が小さくなります）。
+age）が真であると仮定して推定するため、catch at
+ageの不確実性を評価することが出来ないモデルです。
+ここで紹介する`do_caaboot_vpa`関数は、引数として与えている年齢別漁獲尾数(`$input$dat$caa`)の対数を取った後、正規分布乱数で生成した年齢別漁獲尾数を用いて、再度VPA計算を行います。
 
-```{r}
+引数`B_cv`で乱数生成の変動係数を決めることができます。デフォルトで0.2となっていますが、年齢別漁獲尾数データの不確実性が大きいことが想定される場合、この値を適宜大きくして検討してみてください。
 
-res_boot2 = boo.vpa(res_vpa_estb, type = "caa", B_ite = 10, B_cv=0.2, ess=200)
-plot_boot2 = plot_boot(res_boot2, ci_range = 0.95)
-plot_boot2$plot_ssb/plot_boot2$plot_rec/plot_boot2$plot_biomass
 
+``` r
+res_vpa_caaboot <- do_caaboot_vpa(res_vpa_estb, B_ite = 10)
+res_vpa_caaboot$plot_ssb
 ```
 
-一般に、VPAの資源量推定結果を信頼区間と重ねてプロットすると、先程の`plot_boot1$plot_ssb`のように最近年で信頼区間が広く、過去にさかのぼるほど信頼区間は狭くなっています。
+![plot of chunk unnamed-chunk-31](figure/unnamed-chunk-31-1.png)
+
+``` r
+res_vpa_caaboot$plot_rec
+```
+
+![plot of chunk unnamed-chunk-31](figure/unnamed-chunk-31-2.png)
+
+``` r
+res_vpa_caaboot$plot_biomass
+```
+
+![plot of chunk unnamed-chunk-31](figure/unnamed-chunk-31-3.png)
+
+一般に、VPAの資源量推定結果を信頼区間と重ねてプロットすると、先程の`res_vpa_bootstrap$plot_ssb`のように最近年で信頼区間が広く、過去にさかのぼるほど信頼区間は狭くなっています。
 
 これは決して過去の推定結果が正しいからではなく、確率変数として考えている資源量指数の不確実性を考慮しただけでは、最近の資源量の不確実性しか考慮できず、それより過去は正しいと仮定されている年齢別漁獲尾数データによって、決定的に求まっているだけなのです。
 年齢別漁獲尾数の不確実性を考慮すると、時系列に関係なく資源量推定結果に不確実性があることが明らかになるかと思います。
@@ -693,9 +756,3 @@ plot_boot2$plot_ssb/plot_boot2$plot_rec/plot_boot2$plot_biomass
 VPAのモデル診断結果が芳しくない場合、そこから推定される再生産関係、管理基準値の推定、更には将来予測などに、大きな影響を及ぼします。
 
 VPA関数が無事に動くと一安心してしまう所ではありますが、併せてモデル診断も行って結果の妥当性を評価してください。
-
-## 編集
-
-八木達紀（責任編集）・濵邉昂平・市野川桃子・真鍋明弘
-
-Tatsunori Yagi (Editor-in-Chief), Kohei Hamabe, Momoko Ichinokawa, Akihiro Manabe
